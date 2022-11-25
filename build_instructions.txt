@@ -9,9 +9,11 @@ it should be the full path to the RTEMS5 installation directory, e.g. "/home/use
 	cmake -DRTEMS_INSTALL_PATH=<RTEMS5-INSTALLATION-PATH> -DCMAKE_TOOLCHAIN_FILE=../toolchain/i386-rtems5.cmake ..
 
 2. Run pre-build.sh to generate the tarball:
+    cd ..
 	./pre-build.sh
 
 3. Compile:
+    cd build
 	make
 
 4. Run:

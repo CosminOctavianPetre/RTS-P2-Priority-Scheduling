@@ -7,7 +7,7 @@
  *  CONSTANTS
  *********************************************************/
 // COMMENT THIS LINE TO EXECUTE WITH THE PC
-#define TEST_MODE 1
+//#define TEST_MODE 1
 
 #define SAMPLE_TIME 250 
 #define SOUND_PIN  11
