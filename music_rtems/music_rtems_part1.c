@@ -41,6 +41,12 @@
 
 typedef enum{paused, playing} state_t;
 
+typedef struct {
+    unsigned char buf[SEND_SIZE];
+    int fd_file;
+    int fd_serie;
+} th_args_t;
+
 
 /**********************************************************
  *  GLOBALS
@@ -50,6 +56,7 @@ extern int _binary_tarfile_start;
 extern int _binary_tarfile_size;
 // playback state: governs whether the audiofile is read or not
 state_t playback_state = playing;
+pthread_mutex_t mutex_playback_state;
 
 
 void diffTime(struct timespec end, struct timespec start, struct timespec *diff)
@@ -92,46 +99,62 @@ int compTime(struct timespec t1, struct timespec t2)
     return (0);
 }
 
-
-void task_playback(int fd_serie, int fd_file, unsigned char *buf)
+//compute time: 4.6ms
+void* task_playback(void *args)
 {
     struct timespec start, end, diff, cycle;
-    int ret;
+    th_args_t *th_args = (th_args_t*) args;
+    state_t local_playback_state;
 
     cycle.tv_sec = PERIOD_TASK_PLAYBACK_SEC;
     cycle.tv_nsec = PERIOD_TASK_PLAYBACK_NSEC;
 
     clock_gettime(CLOCK_REALTIME, &start);
     while (1) {
-        // read from music file
-        ret = read(fd_file, buf, SEND_SIZE);
-        if (ret < 0) {
-            printf("read: error reading file\n");
-            exit(-1);
+        // read global playback_state
+        pthread_mutex_lock(&mutex_playback_state);
+        local_playback_state = playback_state;
+        pthread_mutex_unlock(&mutex_playback_state);
+
+        // depending on playback state
+        switch (local_playback_state) {
+            case playing:
+                // read from music file
+                if ( read(th_args->fd_file, th_args->buf, SEND_SIZE) < 0 ) {
+                    perror("read: error reading file\n");
+                    exit(-1);
+                }
+                break;
+            case paused:
+                // fill buffer with 0's
+                memset(th_args->buf, 0, SEND_SIZE);
+                break;
         }
         
         // write on the serial/I2C port
-        ret = write(fd_serie, buf, SEND_SIZE);
-        if (ret < 0) {
-            printf("write: error writting serial\n");
+        if ( write(th_args->fd_serie, th_args->buf, SEND_SIZE) < 0 ) {
+            perror("write: error writing serial\n");
             exit(-1);
         }
 
-        // get end time, calculate lapso and sleep
         clock_gettime(CLOCK_REALTIME, &end);
         diffTime(end, start, &diff);
-        if (0 >= compTime(cycle, diff)) {
-            printf("ERROR: lasted long than the cycle\n");
+
+        if (compTime(cycle, diff) <= 0) {
+            fprintf(stderr, "[CRASH] lasted longer than the cycle\n");
             exit(-1);
         }
+
         diffTime(cycle, diff, &diff);
         nanosleep(&diff, NULL);
         addTime(start, cycle, &start);
     }
+    return NULL;
 }
 
-
-void task_read_commands()
+//TODO: NOT SURE ABOUT THIS!!!
+//compute time: 0.0723ms
+void* task_read_commands(void *args)
 {
     struct timespec start, end, diff, cycle;
     char keyboard_input = '1';
@@ -141,48 +164,64 @@ void task_read_commands()
     clock_gettime(CLOCK_REALTIME, &start);
 
     while (1) {
+    // clock_gettime(CLOCK_REALTIME, &start);
         switch (keyboard_input) {
             case '0':
+                pthread_mutex_lock(&mutex_playback_state);
                 playback_state = 0;
+                pthread_mutex_unlock(&mutex_playback_state);
                 break;
             case '1':
+                pthread_mutex_lock(&mutex_playback_state);
                 playback_state = 1;
-                break;
-        }
-
-        //TODO: remove temporary this stuff
-        switch (playback_state) {
-            case playing:
-                printf("Reproduction resumed\n"); fflush(stdout);
-                break;
-            case paused:
-                printf("Reproduction paused\n"); fflush(stdout);
+                pthread_mutex_unlock(&mutex_playback_state);
                 break;
         }
         
         while ( scanf("%c", &keyboard_input) <= 0 );
         clock_gettime(CLOCK_REALTIME, &end);
 
+        // diff = (end - start) % cycle
         diffTime(end, start, &diff);
         while( compTime(diff, cycle) > 0 )
             diffTime(diff, cycle, &diff);
 
+        // this really really should never happen
+        if (compTime(cycle, diff) <= 0) {
+            fprintf(stderr, "[CRASH] lasted longer than the cycle\n");
+            exit(-1);
+        }
+
+        diffTime(cycle, diff, &diff);
         nanosleep(&diff, NULL);
         addTime(start, cycle, &start);
+
+        // clock_gettime(CLOCK_REALTIME, &end);
+        // diffTime(end, start, &diff);
+        // while( compTime(diff, cycle) > 0 )
+        //     diffTime(diff, cycle, &diff);
+        // fprintf(stderr, "time taken: %lld.%.9ld\n", (long long)diff.tv_sec, diff.tv_nsec);
     }
+    return NULL;
 }
 
-
-void task_show_playback_state()
+//compute time: 2.46ms
+void* task_show_playback_state(void *args)
 {
     struct timespec start, end, diff, cycle;
+    state_t local_playback_state;
 
     cycle.tv_sec = PERIOD_TASK_SHOW_PLAYBACK_STATE_SEC;
     cycle.tv_nsec = PERIOD_TASK_SHOW_PLAYBACK_STATE_NSEC;
     clock_gettime(CLOCK_REALTIME, &start);
 
     while (1) {
-        switch (playback_state) {
+        // read global playback_state
+        pthread_mutex_lock(&mutex_playback_state);
+        local_playback_state = playback_state;
+        pthread_mutex_unlock(&mutex_playback_state);
+
+        switch (local_playback_state) {
             case playing:
                 printf("Reproduction resumed\n"); fflush(stdout);
                 break;
@@ -194,19 +233,22 @@ void task_show_playback_state()
         clock_gettime(CLOCK_REALTIME, &end);
         diffTime(end, start, &diff);
 
+        if (compTime(cycle, diff) <= 0) {
+            fprintf(stderr, "[CRASH] lasted longer than the cycle\n");
+            exit(-1);
+        }
+
+        diffTime(cycle, diff, &diff);
         nanosleep(&diff, NULL);
         addTime(start, cycle, &start);
     }
+    return NULL;
 }
 
 
 rtems_task Init (rtems_task_argument ignored)
 {
-    struct timespec start, end, diff, cycle;
-    unsigned char buf[SEND_SIZE];
-    int fd_file = -1;
-    int fd_serie = -1;
-    int ret = 0;
+    th_args_t th_args;
 
     printf("Populating Root file system from TAR file.\n");
     Untar_FromMemory((unsigned char *) (&TARFILE_START), (unsigned long) &TARFILE_SIZE);
@@ -215,8 +257,8 @@ rtems_task Init (rtems_task_argument ignored)
 
     /* Open serial port */
     printf("open serial device %s \n", DEV_NAME);
-    fd_serie = open (DEV_NAME, O_RDWR);
-    if (fd_serie < 0) {
+    th_args.fd_serie = open(DEV_NAME, O_RDWR);
+    if (th_args.fd_serie < 0) {
         printf("open: error opening serial %s\n", DEV_NAME);
         exit(-1);
     }
@@ -224,22 +266,40 @@ rtems_task Init (rtems_task_argument ignored)
     struct termios portSettings;
     speed_t speed = B115200;
 
-    tcgetattr(fd_serie, &portSettings);
+    tcgetattr(th_args.fd_serie, &portSettings);
     cfsetispeed(&portSettings, speed);
     cfsetospeed(&portSettings, speed);
     cfmakeraw(&portSettings);
-    tcsetattr(fd_serie, TCSANOW, &portSettings);
+    tcsetattr(th_args.fd_serie, TCSANOW, &portSettings);
 
     /* Open music file */
     printf("open file %s begin\n", AUDIOFILE_NAME);
-    fd_file = open (AUDIOFILE_NAME, O_RDWR);
-    if (fd_file < 0) {
+    th_args.fd_file = open(AUDIOFILE_NAME, O_RDWR);
+    if (th_args.fd_file < 0) {
         perror("open: error opening file \n");
         exit(-1);
     }
 
-    task_read_commands();
-    // task_playback(fd_serie, fd_file, buf);
+    if ( pthread_mutex_init(&mutex_playback_state, NULL) < 0) {
+        perror("pthread_mutex_init: error initializing mutex\n");
+        exit(-1);
+    }
+
+    pthread_t task1, task2, task3;
+    pthread_attr_t th_attr;
+
+    if ( pthread_attr_init(&th_attr) != 0) {
+        perror("pthread_attr_init: error initializing pthread attributes\n");
+        exit(-1);
+    }
+
+    pthread_create(&task1, &th_attr, task_playback, (void*) &th_args);
+    pthread_create(&task2, &th_attr, task_read_commands, NULL);
+    pthread_create(&task3, &th_attr, task_show_playback_state, NULL);
+
+    pthread_join(task1, NULL);
+    pthread_join(task2, NULL);
+    pthread_join(task3, NULL);
     exit(0);
 
 } /* End of Init() */
