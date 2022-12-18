@@ -7,6 +7,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <sched.h>
 #include <unistd.h>
 #include <limits.h>
 #include <sys/errno.h>
@@ -17,6 +18,7 @@
 #include <rtems/shell.h>
 #include <rtems/untar.h>
 #include <bsp.h>
+
 
 /**********************************************************
  *  CONSTANTS
@@ -99,6 +101,7 @@ int compTime(struct timespec t1, struct timespec t2)
     return (0);
 }
 
+
 //compute time: 4.6ms
 void* task_playback(void *args)
 {
@@ -152,7 +155,7 @@ void* task_playback(void *args)
     return NULL;
 }
 
-//TODO: NOT SURE ABOUT THIS!!!
+
 //compute time: 0.0723ms
 void* task_read_commands(void *args)
 {
@@ -161,10 +164,9 @@ void* task_read_commands(void *args)
 
     cycle.tv_sec = PERIOD_TASK_READ_COMMANDS_SEC;
     cycle.tv_nsec = PERIOD_TASK_READ_COMMANDS_NSEC;
-    clock_gettime(CLOCK_REALTIME, &start);
 
+    clock_gettime(CLOCK_REALTIME, &start);
     while (1) {
-    // clock_gettime(CLOCK_REALTIME, &start);
         switch (keyboard_input) {
             case '0':
                 pthread_mutex_lock(&mutex_playback_state);
@@ -195,15 +197,10 @@ void* task_read_commands(void *args)
         diffTime(cycle, diff, &diff);
         nanosleep(&diff, NULL);
         addTime(start, cycle, &start);
-
-        // clock_gettime(CLOCK_REALTIME, &end);
-        // diffTime(end, start, &diff);
-        // while( compTime(diff, cycle) > 0 )
-        //     diffTime(diff, cycle, &diff);
-        // fprintf(stderr, "time taken: %lld.%.9ld\n", (long long)diff.tv_sec, diff.tv_nsec);
     }
     return NULL;
 }
+
 
 //compute time: 2.46ms
 void* task_show_playback_state(void *args)
@@ -213,8 +210,8 @@ void* task_show_playback_state(void *args)
 
     cycle.tv_sec = PERIOD_TASK_SHOW_PLAYBACK_STATE_SEC;
     cycle.tv_nsec = PERIOD_TASK_SHOW_PLAYBACK_STATE_NSEC;
+    
     clock_gettime(CLOCK_REALTIME, &start);
-
     while (1) {
         // read global playback_state
         pthread_mutex_lock(&mutex_playback_state);
@@ -286,16 +283,35 @@ rtems_task Init (rtems_task_argument ignored)
     }
 
     pthread_t task1, task2, task3;
-    pthread_attr_t th_attr;
+    pthread_attr_t th_attr_task1, th_attr_task2, th_attr_task3;
+    struct sched_param th_params_task1, th_params_task2, th_params_task3;
+    th_params_task1.sched_priority = 3;
+    th_params_task2.sched_priority = 2;
+    th_params_task3.sched_priority = 1;
 
-    if ( pthread_attr_init(&th_attr) != 0) {
-        perror("pthread_attr_init: error initializing pthread attributes\n");
-        exit(-1);
-    }
+    pthread_attr_init(&th_attr_task1);
+    pthread_attr_init(&th_attr_task2);
+    pthread_attr_init(&th_attr_task3);
 
-    pthread_create(&task1, &th_attr, task_playback, (void*) &th_args);
-    pthread_create(&task2, &th_attr, task_read_commands, NULL);
-    pthread_create(&task3, &th_attr, task_show_playback_state, NULL);
+    pthread_attr_setscope(&th_attr_task1, PTHREAD_SCOPE_SYSTEM);
+    pthread_attr_setscope(&th_attr_task2, PTHREAD_SCOPE_SYSTEM);
+    pthread_attr_setscope(&th_attr_task3, PTHREAD_SCOPE_SYSTEM);
+
+    pthread_attr_setinheritsched(&th_attr_task1, PTHREAD_EXPLICIT_SCHED);
+    pthread_attr_setinheritsched(&th_attr_task2, PTHREAD_EXPLICIT_SCHED);
+    pthread_attr_setinheritsched(&th_attr_task3, PTHREAD_EXPLICIT_SCHED);
+
+    pthread_attr_setschedpolicy(&th_attr_task1, SCHED_FIFO);
+    pthread_attr_setschedpolicy(&th_attr_task2, SCHED_FIFO);
+    pthread_attr_setschedpolicy(&th_attr_task3, SCHED_FIFO);
+
+    pthread_attr_setschedparam(&th_attr_task1, &th_params_task1);
+    pthread_attr_setschedparam(&th_attr_task2, &th_params_task2);
+    pthread_attr_setschedparam(&th_attr_task3, &th_params_task3);
+
+    pthread_create(&task1, &th_attr_task1, task_playback, (void*) &th_args);
+    pthread_create(&task2, &th_attr_task2, task_read_commands, NULL);
+    pthread_create(&task3, &th_attr_task3, task_show_playback_state, NULL);
 
     pthread_join(task1, NULL);
     pthread_join(task2, NULL);
