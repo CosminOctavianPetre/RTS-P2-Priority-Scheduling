@@ -12,6 +12,18 @@
 #define SAMPLE_TIME 250 
 #define SOUND_PIN  11
 #define BUF_SIZE 256
+#define PUSH_BUTTON 7
+#define LED 13
+
+#define TIME_TASK(TASK) \
+    time_exec_begin = micros(); \
+    (TASK); \
+    time_exec_end = micros(); \
+    elapsed = time_exec_end - time_exec_begin;
+
+typedef enum{muted, playing} state_t;
+state_t playback_state = playing;
+int old_value_button = 0;
 
 /**********************************************************
  *  GLOBALS
@@ -21,6 +33,7 @@ unsigned long timeOrig;
 
 /**********************************************************
  * Function: play_bit
+ Worst Compute Time: 28 μs
  *********************************************************/
 void play_bit() 
 {
@@ -40,7 +53,28 @@ void play_bit()
           }
        #endif
     }
-    digitalWrite(SOUND_PIN, (data & bitwise) );
+    switch (playback_state) {
+        case playing:
+            digitalWrite(SOUND_PIN, (data & bitwise) );
+            break;
+        case muted:
+            digitalWrite(SOUND_PIN, 0);
+            break;
+    }
+}
+
+/**********************************************************
+ * Function: read_button_task
+ Worst Compute Time: 12 μs
+ *********************************************************/
+void read_button_task()
+{
+    int value = digitalRead(PUSH_BUTTON);
+    if ( (old_value_button == 0) && (value == 1) ) {
+        playback_state = (state_t) !playback_state;
+        digitalWrite(LED, !playback_state);      
+    }
+    old_value_button = value;
 }
 
 /**********************************************************
@@ -62,9 +96,13 @@ void setup ()
 void loop ()
 {
     unsigned long timeDiff;
+    unsigned long time_exec_begin;
+    unsigned long time_exec_end, elapsed;
 
     play_bit();
-    timeDiff = SAMPLE_TIME - (micros() - timeOrig);
-    timeOrig = timeOrig + SAMPLE_TIME;
-    delayMicroseconds(timeDiff);
+    TIME_TASK(read_button_task());
+    Serial.println(elapsed);
+    //timeDiff = SAMPLE_TIME - (micros() - timeOrig);
+    //timeOrig = timeOrig + SAMPLE_TIME;
+    //delayMicroseconds(timeDiff);
 }
