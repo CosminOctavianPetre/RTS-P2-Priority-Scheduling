@@ -65,14 +65,17 @@ void play_bit()
 
 /**********************************************************
  * Function: read_button_task
- Worst Compute Time: 12 μs
+ Worst Compute Time: 24 μs
  *********************************************************/
 void read_button_task()
 {
     int value = digitalRead(PUSH_BUTTON);
     if ( (old_value_button == 0) && (value == 1) ) {
+        noInterrupts();
         playback_state = (state_t) !playback_state;
-        digitalWrite(LED, !playback_state);      
+        digitalWrite(LED, !playback_state);
+        interrupts();
+      
     }
     old_value_button = value;
 }
@@ -96,7 +99,7 @@ void setup ()
 }
 
 ISR(TIMER1_COMPA_vect){
-    play_bit();  
+
 }
 
 
@@ -105,10 +108,12 @@ ISR(TIMER1_COMPA_vect){
  *********************************************************/
 void loop ()
 {
-    unsigned long timeDiff;
-    noInterrupts();
+    
     read_button_task();
-    interrupts();    
+    unsigned long time_exec_begin, time_exec_end, elapsed;
+    TIME_TASK(play_bit());
+    Serial.println(elapsed);
+
     //timeDiff = SAMPLE_TIME - (micros() - timeOrig);
     //timeOrig = timeOrig + SAMPLE_TIME;
     //delayMicroseconds(timeDiff);
