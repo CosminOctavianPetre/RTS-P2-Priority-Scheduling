@@ -32,7 +32,7 @@ unsigned char buffer[BUF_SIZE];
 unsigned long timeOrig;
 
 /**********************************************************
- * Function: play_bit
+ * Function: play_byte
  Worst Compute Time: 28 μs
  *********************************************************/
 void play_byte() 
@@ -61,14 +61,16 @@ void play_byte()
 
 /**********************************************************
  * Function: read_button_task
- Worst Compute Time: 12 μs
+ Worst Compute Time: 24 μs
  *********************************************************/
 void read_button_task()
 {
     int value = digitalRead(PUSH_BUTTON);
     if ( (old_value_button == 0) && (value == 1) ) {
+        noInterrupts();
         playback_state = (state_t) !playback_state;
-        digitalWrite(LED, !playback_state);      
+        digitalWrite(LED, !playback_state);
+        interrupts();
     }
     old_value_button = value;
 }
@@ -99,7 +101,7 @@ void setup ()
 }
 
 ISR(TIMER1_COMPA_vect){
-    play_byte();  
+    play_byte();
 }
 
 
@@ -108,11 +110,5 @@ ISR(TIMER1_COMPA_vect){
  *********************************************************/
 void loop ()
 {
-    unsigned long timeDiff;
-    noInterrupts();
     read_button_task();
-    interrupts();    
-    //timeDiff = SAMPLE_TIME - (micros() - timeOrig);
-    //timeOrig = timeOrig + SAMPLE_TIME;
-    //delayMicroseconds(timeDiff);
 }

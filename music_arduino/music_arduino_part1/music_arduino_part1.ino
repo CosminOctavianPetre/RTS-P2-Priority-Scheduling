@@ -99,7 +99,7 @@ void setup ()
 }
 
 ISR(TIMER1_COMPA_vect){
-
+    play_bit();
 }
 
 
@@ -108,13 +108,6 @@ ISR(TIMER1_COMPA_vect){
  *********************************************************/
 void loop ()
 {
-    
     read_button_task();
-    unsigned long time_exec_begin, time_exec_end, elapsed;
-    TIME_TASK(play_bit());
-    Serial.println(elapsed);
-
-    //timeDiff = SAMPLE_TIME - (micros() - timeOrig);
-    //timeOrig = timeOrig + SAMPLE_TIME;
-    //delayMicroseconds(timeDiff);
 }
+
