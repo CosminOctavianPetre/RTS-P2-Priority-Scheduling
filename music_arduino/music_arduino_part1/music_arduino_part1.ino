@@ -9,7 +9,7 @@
 // COMMENT THIS LINE TO EXECUTE WITH THE PC
 #define TEST_MODE 1
 
-#define SAMPLE_TIME 250 
+#define SAMPLE_TIME 15625 
 #define SOUND_PIN  11
 #define BUF_SIZE 256
 #define PUSH_BUTTON 7
@@ -87,8 +87,18 @@ void setup ()
 
     pinMode(SOUND_PIN, OUTPUT);
     memset (buffer, 0, BUF_SIZE);
-    timeOrig = micros();    
+    //timeOrig = micros();
+    OCR1A=SAMPLE_TIME;
+    OCR1B=0;    
+    TCCR1A = _BV(COM2A0);
+    TCCR1B = _BV(WGM12) | _BV(CS12) | _BV(CS10);
+    TIMSK1 = _BV(OCIE1A);
 }
+
+ISR(TIMER1_COMPA_vect){
+    play_bit();  
+}
+
 
 /**********************************************************
  * Function: loop
@@ -96,12 +106,9 @@ void setup ()
 void loop ()
 {
     unsigned long timeDiff;
-    unsigned long time_exec_begin;
-    unsigned long time_exec_end, elapsed;
-
-    play_bit();
-    TIME_TASK(read_button_task());
-    Serial.println(elapsed);
+    noInterrupts();
+    read_button_task();
+    interrupts();    
     //timeDiff = SAMPLE_TIME - (micros() - timeOrig);
     //timeOrig = timeOrig + SAMPLE_TIME;
     //delayMicroseconds(timeDiff);
