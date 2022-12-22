@@ -23,11 +23,11 @@
 /**********************************************************
  *  CONSTANTS
  *********************************************************/
-#define SLAVE_ADDR 0x8
-#define NSEC_PER_SEC 1000000000UL
+#define SLAVE_ADDR      0x8
+#define NSEC_PER_SEC    1000000000UL
 
-#define DEV_NAME "/dev/com1"
-#define AUDIOFILE_NAME "/let_it_be_1bit.raw"
+#define DEV_NAME        "/dev/com1"
+#define AUDIOFILE_NAME  "/let_it_be_1bit.raw"
 
 #define PERIOD_TASK_PLAYBACK_SEC                0           /* Period of Playback Task */
 #define PERIOD_TASK_PLAYBACK_NSEC               512000000   /* Period of Playback Task */
@@ -38,10 +38,15 @@
 #define SEND_SIZE                               256         /* BYTES */
 
 // audiofile tarball stuff
-#define TARFILE_START _binary_tarfile_start
-#define TARFILE_SIZE _binary_tarfile_size
+#define TARFILE_START   _binary_tarfile_start
+#define TARFILE_SIZE    _binary_tarfile_size
 
+
+/**********************************************************
+ *  TYPEDEFS
+ *********************************************************/
 typedef enum{paused, playing} state_t;
+
 
 typedef struct {
     unsigned char buf[SEND_SIZE];
@@ -56,11 +61,38 @@ typedef struct {
 // audiofile tarball stuff
 extern int _binary_tarfile_start;
 extern int _binary_tarfile_size;
+
 // playback state: governs whether the audiofile is read or not
 state_t playback_state = playing;
 pthread_mutex_t mutex_playback_state;
 
 
+// ------------------------------------
+// Function Prototypes
+// ------------------------------------
+
+/*************** Tasks ***************/
+
+// ------------------------------------
+// Task: Playback
+// ------------------------------------
+void* task_playback(void *args);
+// ------------------------------------
+// Task: Read Commands
+// ------------------------------------
+void* task_read_commands(void *args);
+// ------------------------------------
+// Task: Show Playback State
+// ------------------------------------
+void* task_show_playback_state(void *args);
+
+/********** Aux functions ************/
+void diffTime(struct timespec end, struct timespec start, struct timespec *diff);
+void addTime(struct timespec end, struct timespec start, struct timespec *add);
+int compTime(struct timespec t1, struct timespec t2);
+
+
+/********** Aux functions ************/
 void diffTime(struct timespec end, struct timespec start, struct timespec *diff)
 {
     if (end.tv_nsec < start.tv_nsec) {
@@ -102,7 +134,7 @@ int compTime(struct timespec t1, struct timespec t2)
 }
 
 
-//compute time: 4.6ms
+/************** Tasks ****************/
 void* task_playback(void *args)
 {
     struct timespec start, end, diff, cycle;
@@ -156,7 +188,6 @@ void* task_playback(void *args)
 }
 
 
-//compute time: 0.0723ms
 void* task_read_commands(void *args)
 {
     struct timespec start, end, diff, cycle;
@@ -202,7 +233,6 @@ void* task_read_commands(void *args)
 }
 
 
-//compute time: 2.46ms
 void* task_show_playback_state(void *args)
 {
     struct timespec start, end, diff, cycle;
@@ -285,6 +315,8 @@ rtems_task Init (rtems_task_argument ignored)
     pthread_t task1, task2, task3;
     pthread_attr_t th_attr_task1, th_attr_task2, th_attr_task3;
     struct sched_param th_params_task1, th_params_task2, th_params_task3;
+
+    // Assign thread priorities
     th_params_task1.sched_priority = 3;
     th_params_task2.sched_priority = 2;
     th_params_task3.sched_priority = 1;
