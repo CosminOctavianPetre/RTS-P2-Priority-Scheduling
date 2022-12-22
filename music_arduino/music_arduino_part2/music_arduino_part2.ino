@@ -3,67 +3,83 @@
  *********************************************************/
 #include "let_it_be.h"
 
+
 /**********************************************************
  *  CONSTANTS
  *********************************************************/
 // COMMENT THIS LINE TO EXECUTE WITH THE PC
-#define TEST_MODE 1
+// #define TEST_MODE 1
 
-#define SAMPLE_TIME 3999 
-#define SOUND_PIN  11
-#define BUF_SIZE 256
-#define PUSH_BUTTON 7
-#define LED 13
+#define SAMPLE_FREQ     3999
+#define BUF_SIZE        256
 
-#define TIME_TASK(TASK) \
-    time_exec_begin = micros(); \
-    (TASK); \
-    time_exec_end = micros(); \
-    elapsed = time_exec_end - time_exec_begin;
+// ------------------------------------
+// Digital PIN Numbers
+// ------------------------------------
+#define PUSH_BUTTON     7
+#define SOUND           11
+#define LED             13
 
+
+/**********************************************************
+ *  TYPEDEFS
+ *********************************************************/
 typedef enum{muted, playing} state_t;
-state_t playback_state = playing;
-int old_value_button = 0;
+
 
 /**********************************************************
  *  GLOBALS
  *********************************************************/
 unsigned char buffer[BUF_SIZE];
-unsigned long timeOrig;
+state_t playback_state = playing;
+int old_value_button = 0;
 
-/**********************************************************
- * Function: play_byte
- Worst Compute Time: 28 μs
- *********************************************************/
-void play_byte() 
+
+// ------------------------------------
+// Function Prototypes
+// ------------------------------------
+
+/************** Tasks ****************/
+
+// ------------------------------------
+// Task: Playback
+// Worst Compute Time: 28 μs
+// ------------------------------------
+void task_playback();
+// ------------------------------------
+// Tasks: Read Button and Display LED
+// Worst Compute Time: 24 μs
+// ------------------------------------
+void task_button_led();
+
+
+/************** Tasks ****************/
+void task_playback() 
 {
-  static unsigned char data = 0;
-  static int music_count = 0;
+    static unsigned char data = 0;
+    static int music_count = 0;
 
-    #ifdef TEST_MODE 
-      data = pgm_read_byte_near(music + music_count);
-      music_count = (music_count + 1) % MUSIC_LEN;
-    #else 
-      if (Serial.available()>1) {
-          data = Serial.read();
-      }
-    #endif
+#ifdef TEST_MODE 
+    data = pgm_read_byte_near(music + music_count);
+    music_count = (music_count + 1) % MUSIC_LEN;
+#else 
+    if (Serial.available() > 1) {
+        data = Serial.read();
+    }
+#endif
     
     switch (playback_state) {
         case playing:
             OCR2A = data;
             break;
         case muted:
-            OCR2A=0;
+            OCR2A = 0;
             break;
     }
 }
 
-/**********************************************************
- * Function: read_button_task
- Worst Compute Time: 24 μs
- *********************************************************/
-void read_button_task()
+
+void task_button_led()
 {
     int value = digitalRead(PUSH_BUTTON);
     if ( (old_value_button == 0) && (value == 1) ) {
@@ -75,40 +91,41 @@ void read_button_task()
     old_value_button = value;
 }
 
-/**********************************************************
- * Function: setup
- *********************************************************/
-void setup ()
+
+void setup()
 {
     // Initialize serial communications
     Serial.begin(115200);
+    memset(buffer, 0, BUF_SIZE);
 
-    pinMode(SOUND_PIN, OUTPUT);
-    memset (buffer, 0, BUF_SIZE);
+    // set pins
+    pinMode(SOUND, OUTPUT);
     pinMode(LED, OUTPUT);
     pinMode(PUSH_BUTTON, INPUT);
 
+    // set up timer 1 for interrupts
     TCCR1A = _BV(COM1A0);
     TCCR1B = _BV(WGM12) | _BV(CS10);
     TIMSK1 = _BV(OCIE1A);
 
+    // set up timer 2 for 8-bit sample PWM playback
     TCCR2A = _BV(WGM21) | _BV(WGM20) | _BV(COM2A1);
     TCCR2B = _BV(CS20);
     
-    OCR1A=SAMPLE_TIME;
-    OCR1B=0;
-    OCR2A=0;
-}
-
-ISR(TIMER1_COMPA_vect){
-    play_byte();
+    OCR1A = SAMPLE_FREQ;
+    OCR1B = 0;
+    OCR2A = 0;
 }
 
 
-/**********************************************************
- * Function: loop
- *********************************************************/
-void loop ()
+// Interrupt handler
+ISR(TIMER1_COMPA_vect)
 {
-    read_button_task();
+    task_playback();
+}
+
+
+void loop()
+{
+    task_button_led();
 }
